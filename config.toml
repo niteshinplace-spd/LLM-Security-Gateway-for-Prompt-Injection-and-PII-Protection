@@ -1,0 +1,16 @@
+[server]
+host = "127.0.0.1"
+port = 8080
+timeout_seconds = 60
+
+[upstream]
+# Upstream LLM provider (Ollama local service)
+base_url = "http://127.0.0.1:11434"
+chat_endpoint = "/v1/chat/completions"
+default_model = "llama3.2:3b"
+api_key = ""
+
+[security]
+# SSRF Protection: Allow localhost for local Ollama, block cloud metadata
+allow_localhost = true
+block_cloud_metadata = true
