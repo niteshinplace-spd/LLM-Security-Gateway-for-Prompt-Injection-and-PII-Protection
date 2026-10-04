@@ -349,6 +349,7 @@ dependencies = [
  "axum",
  "dotenvy",
  "gateway-core",
+ "http-body-util",
  "reqwest",
  "serde",
  "serde_json",
@@ -359,6 +360,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "url",
 ]
 
 [[package]]
