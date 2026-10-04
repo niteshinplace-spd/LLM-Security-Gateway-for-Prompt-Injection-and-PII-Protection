@@ -5,6 +5,12 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod injection;
+pub mod normalizer;
+
+pub use injection::InjectionScanner;
+pub use normalizer::normalize_for_scan;
+
 /// Action verdict resulting from security inspection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "action", content = "details")]

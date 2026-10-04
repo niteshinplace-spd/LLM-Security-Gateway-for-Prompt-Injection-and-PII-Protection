@@ -16,7 +16,6 @@ pub enum GatewayError {
     #[error("Upstream connection failure: {0}")]
     UpstreamConnectionFailed(String),
 
-    #[allow(dead_code)]
     #[error("Security policy violation: {reason}")]
     SecurityBlocked {
         reason: String,

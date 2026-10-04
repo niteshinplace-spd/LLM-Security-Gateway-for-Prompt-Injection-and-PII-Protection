@@ -12,11 +12,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
 
+use gateway_core::InjectionScanner;
+
 /// Shared application state across Axum request handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub client: reqwest::Client,
+    pub scanner: Arc<InjectionScanner>,
 }
 
 impl AppState {
@@ -30,6 +33,7 @@ impl AppState {
         Ok(Self {
             config: Arc::new(config),
             client,
+            scanner: Arc::new(InjectionScanner::new()),
         })
     }
 }
@@ -108,7 +112,28 @@ async fn chat_completions_handler(
             .to_string()
     };
 
-    // 2. Prepare upstream request
+    // 2. Inbound Security Inspection (Sub-Millisecond Guardrails)
+    if let Some(messages) = payload.get("messages").and_then(|m| m.as_array()) {
+        for msg in messages {
+            if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
+                let report = state.scanner.scan(content);
+                if let gateway_core::Verdict::Block { reason, category } = report.verdict {
+                    warn!(
+                        reason = %reason,
+                        category = ?category,
+                        latency_us = report.latency_micros,
+                        "Inbound prompt injection blocked"
+                    );
+                    return Err(GatewayError::SecurityBlocked {
+                        reason,
+                        category: format!("{:?}", category),
+                    });
+                }
+            }
+        }
+    }
+
+    // 3. Prepare upstream request
     let upstream_url = state.config.upstream_chat_url();
     let mut req_builder = state.client.post(&upstream_url).json(&payload);
 
@@ -173,6 +198,21 @@ async fn simple_chat_handler(
 ) -> Result<Json<SimpleChatResponse>, GatewayError> {
     if payload.prompt.trim().is_empty() {
         return Err(GatewayError::BadRequest("Prompt cannot be empty".to_string()));
+    }
+
+    // Inbound Security Inspection (Sub-Millisecond Guardrails)
+    let report = state.scanner.scan(&payload.prompt);
+    if let gateway_core::Verdict::Block { reason, category } = report.verdict {
+        warn!(
+            reason = %reason,
+            category = ?category,
+            latency_us = report.latency_micros,
+            "Inbound prompt injection blocked on /chat"
+        );
+        return Err(GatewayError::SecurityBlocked {
+            reason,
+            category: format!("{:?}", category),
+        });
     }
 
     let model = payload
