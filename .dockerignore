@@ -1,0 +1,25 @@
+# Git and VCS
+.git/
+.gitignore
+
+# Rust build artifacts
+target/
+**/*.rs.bk
+
+# Local environment & secret files
+.env
+.env.local
+*.log
+
+# Documentation & Benchmarks
+docs/
+*.docx
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+
+# Temporary directories
+rag_index/
+documents/

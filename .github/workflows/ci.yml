@@ -26,5 +26,12 @@ jobs:
       - name: Cargo Check (all targets)
         run: cargo check --workspace --all-targets
 
-      - name: Run Tests
+      - name: Run Tests (88 unit and integration tests)
         run: cargo test --workspace --verbose
+
+      - name: Verify Micro-benchmarks
+        run: cargo bench --workspace -- --test
+
+      - name: Build Release Binaries
+        run: cargo build --release --workspace --bins
+
