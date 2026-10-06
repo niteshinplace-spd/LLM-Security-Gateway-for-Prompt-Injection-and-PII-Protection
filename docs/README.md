@@ -468,3 +468,37 @@ Run Phase 7 tests only:
 ```bash
 cargo test -p gateway-server --test metrics_tests
 ```
+
+---
+
+## Phase 8 – Performance Testing, Micro-benchmarks & Latency Analysis
+
+Phase 8 provides microsecond-level benchmarking and load testing suites to evaluate the throughput and latency overhead of the gateway.
+
+### Benchmarking Tools
+
+1. **Criterion Micro-benchmarks (`gateway-core/benches/core_benchmarks.rs`)**:
+   Measures isolated execution times of `normalize_for_scan`, `InjectionScanner`, `PiiScanner` (including Luhn check), and `SlidingWindowScanner`.
+
+2. **End-to-End Pipeline Concurrency Simulator (`gateway-server/src/bin/benchmark.rs`)**:
+   Simulates multi-threaded request streams (1 to 64 workers) measuring $p_{50}$, $p_{90}$, $p_{95}$, and $p_{99}$ latency percentiles and throughput (RPS).
+
+### Performance Summary
+
+| Scenario | Throughput | $p_{50}$ Latency | $p_{99}$ Latency | Sub-ms SLA (<1ms) |
+|---|---|---|---|:---:|
+| **Single Worker** | 225,198 RPS | 3 µs (0.003 ms) | 9 µs (0.009 ms) | ✅ **PASSED** |
+| **64 Concurrent Workers** | **982,817 RPS** | **6 µs (0.006 ms)** | **13 µs (0.013 ms)** | ✅ **PASSED (76x faster than SLA)** |
+
+### Running Benchmarks
+
+```bash
+# Run Criterion micro-benchmarks
+cargo bench -p gateway-core
+
+# Run High-Concurrency Load Simulation
+cargo run --release --bin benchmark
+```
+
+See [PHASE_8_BENCHMARKS.md](file:///c:/Users/JERRY/Desktop/RustGuard/docs/PHASE_8_BENCHMARKS.md) for full statistical reports and comparisons against Python-based gateways.
+

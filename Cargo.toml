@@ -43,3 +43,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 # Vector Indexing (RAG)
 hnsw_rs = "0.3"
+
+# Benchmarking
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
