@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # Stage 1: Build & Compilation
-FROM rust:1.80-slim-bookworm AS builder
+FROM rust:1.88-slim-bookworm AS builder
 
 WORKDIR /usr/src/rustguard
 

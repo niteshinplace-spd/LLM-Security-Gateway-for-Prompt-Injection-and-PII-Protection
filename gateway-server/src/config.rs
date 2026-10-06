@@ -23,6 +23,7 @@ pub enum ThreatCategory {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
@@ -32,7 +33,7 @@ pub struct ServerConfig {
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
-            host: "127.0.0.1".to_string(),
+            host: "0.0.0.0".to_string(),
             port: 8080,
             timeout_seconds: 60,
         }
@@ -40,6 +41,7 @@ impl Default for ServerConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct UpstreamConfig {
     pub base_url: String,
     pub chat_endpoint: String,
@@ -59,6 +61,7 @@ impl Default for UpstreamConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct SecurityConfig {
     pub allow_localhost: bool,
     pub block_cloud_metadata: bool,
@@ -112,6 +115,7 @@ impl SecurityConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct GovernanceConfig {
     pub default_deny: bool,
     pub allowlist: Vec<String>,
@@ -149,12 +153,12 @@ impl GovernanceConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
 pub struct AppConfig {
     pub server: ServerConfig,
     pub upstream: UpstreamConfig,
     pub security: SecurityConfig,
     pub governance: GovernanceConfig,
-    #[serde(default)]
     pub rag: RagConfig,
 }
 

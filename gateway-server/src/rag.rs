@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 /// Configuration for Retrieval‑Augmented Generation (RAG).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct RagConfig {
     /// Enable RAG functionality. When false, the engine is not initialised.
     pub enabled: bool,

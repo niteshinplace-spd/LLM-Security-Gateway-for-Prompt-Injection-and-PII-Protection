@@ -1,4 +1,5 @@
 services:
+
   # Rust-Native Sub-Millisecond LLM Security Gateway
   rustguard:
     build:
@@ -7,18 +8,18 @@ services:
     container_name: rustguard-gateway
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3000:8080"
     environment:
-      - SERVER_HOST=0.0.0.0
-      - SERVER_PORT=3000
-      - UPSTREAM_BASE_URL=http://127.0.0.1:11434
-      - DEFAULT_MODEL=llama3.2:3b
+      - GATEWAY_HOST=0.0.0.0
+      - GATEWAY_PORT=8080
+      - UPSTREAM_BASE_URL=http://host.docker.internal:11434
+      - DEFAULT_MODEL=llama3.2:1b
       - REQUIRE_AUTH=false
       - GOVERNANCE_DEFAULT_DENY=false
       - RAG_ENABLED=false
       - RUST_LOG=info
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 15s
       timeout: 3s
       retries: 3
