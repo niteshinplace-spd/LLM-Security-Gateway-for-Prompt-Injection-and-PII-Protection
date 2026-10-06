@@ -6,7 +6,8 @@ use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 fn setup_test_app() -> axum::Router {
-    let config = AppConfig::default();
+    let mut config = AppConfig::default();
+    config.governance.default_deny = false;
     let state = AppState::new(config).expect("Failed to initialize AppState");
     create_router(state)
 }

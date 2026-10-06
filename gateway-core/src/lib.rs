@@ -6,10 +6,16 @@
 use serde::{Deserialize, Serialize};
 
 pub mod injection;
+pub mod metrics;
 pub mod normalizer;
+pub mod pii;
+pub mod streaming;
 
 pub use injection::InjectionScanner;
+pub use metrics::{GatewayMetrics, SharedMetrics};
 pub use normalizer::normalize_for_scan;
+pub use pii::{luhn_check, PiiScanner, SensitiveKind, SensitiveMatch};
+pub use streaming::{SlidingWindowScanner, StreamDecision};
 
 /// Action verdict resulting from security inspection.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

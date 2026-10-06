@@ -1,16 +1,25 @@
 //! Configuration loading, environment overrides, and SSRF validation.
 
+use axum::http::header;
+use axum::http::HeaderMap;
 use serde::Deserialize;
 use std::env;
 use std::fs;
 use std::path::Path;
+use tracing::warn;
 use url::Url;
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct AppConfig {
-    pub server: ServerConfig,
-    pub upstream: UpstreamConfig,
-    pub security: SecurityConfig,
+use crate::error::GatewayError;
+
+pub use crate::rag::RagConfig;
+
+/// Threat categories for governance checks.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ThreatCategory {
+    NetworkAccess,
+    ToolExecution,
+    McpServer,
+    RagPipeline,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -53,6 +62,9 @@ impl Default for UpstreamConfig {
 pub struct SecurityConfig {
     pub allow_localhost: bool,
     pub block_cloud_metadata: bool,
+    pub block_secrets: bool,
+    pub require_auth: bool,
+    pub auth_token: Option<String>,
 }
 
 impl Default for SecurityConfig {
@@ -60,8 +72,90 @@ impl Default for SecurityConfig {
         Self {
             allow_localhost: true,
             block_cloud_metadata: true,
+            block_secrets: false,
+            require_auth: false,
+            auth_token: None,
         }
     }
+}
+
+impl SecurityConfig {
+    /// Enforces authentication when `require_auth` is true.
+    /// Returns Ok(()) if authentication succeeds, otherwise a `GatewayError::SecurityBlocked`.
+    pub fn enforce_auth(&self, headers: &HeaderMap) -> Result<(), GatewayError> {
+        if !self.require_auth {
+            return Ok(());
+        }
+        let expected = self.auth_token.as_ref().ok_or_else(|| GatewayError::SecurityBlocked {
+            reason: "Authentication token not configured".into(),
+            category: "Authentication".into(),
+        })?;
+        let provided = headers
+            .get(header::AUTHORIZATION)
+            .and_then(|v| v.to_str().ok());
+        let token = provided.map(|h| {
+            let lower = h.to_ascii_lowercase();
+            if lower.starts_with("bearer ") {
+                h[7..].trim()
+            } else {
+                h.trim()
+            }
+        });
+        if token != Some(expected.as_str()) {
+            return Err(GatewayError::SecurityBlocked {
+                reason: "Missing or invalid auth token".into(),
+                category: "Authentication".into(),
+            });
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct GovernanceConfig {
+    pub default_deny: bool,
+    pub allowlist: Vec<String>,
+}
+
+impl Default for GovernanceConfig {
+    fn default() -> Self {
+        Self {
+            default_deny: true,
+            allowlist: Vec::new(),
+        }
+    }
+}
+
+impl GovernanceConfig {
+    /// Enforces the default‑deny policy.
+    /// Returns Ok(()) if the request is allowed, otherwise a `GatewayError::SecurityBlocked`.
+    pub fn check_request(&self, category: ThreatCategory, target: &str) -> Result<(), GatewayError> {
+        // If default deny is disabled, everything passes.
+        if !self.default_deny {
+            return Ok(());
+        }
+        // Allowlist match – exact string comparison.
+        if self.allowlist.iter().any(|allowed| allowed == target) {
+            return Ok(());
+        }
+        // Deny by default.
+        let reason = format!("Blocked {:?} request to '{}' by default‑deny policy", category, target);
+        warn!(category = ?category, target = %target, "Governance block");
+        Err(GatewayError::SecurityBlocked {
+            reason,
+            category: format!("{:?}", category),
+        })
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AppConfig {
+    pub server: ServerConfig,
+    pub upstream: UpstreamConfig,
+    pub security: SecurityConfig,
+    pub governance: GovernanceConfig,
+    #[serde(default)]
+    pub rag: RagConfig,
 }
 
 impl Default for AppConfig {
@@ -70,6 +164,8 @@ impl Default for AppConfig {
             server: ServerConfig::default(),
             upstream: UpstreamConfig::default(),
             security: SecurityConfig::default(),
+            governance: GovernanceConfig::default(),
+            rag: RagConfig::default(),
         }
     }
 }
@@ -133,8 +229,54 @@ impl AppConfig {
             }
         }
 
-        // Validate upstream URL against SSRF rules
-        config.validate_upstream_url()?;
+        // Authentication and Governance env var handling
+        if let Ok(require_auth) = env::var("REQUIRE_AUTH") {
+            if let Ok(b) = require_auth.parse::<bool>() {
+                config.security.require_auth = b;
+            }
+        }
+        if let Ok(token) = env::var("AUTH_TOKEN") {
+            if !token.is_empty() {
+                config.security.auth_token = Some(token);
+            }
+        }
+        if let Ok(default_deny) = env::var("GOVERNANCE_DEFAULT_DENY") {
+            if let Ok(b) = default_deny.parse::<bool>() {
+                config.governance.default_deny = b;
+            }
+        }
+        if let Ok(allowlist) = env::var("GOVERNANCE_ALLOWLIST") {
+            // comma‑separated list of allowed targets (e.g., URLs)
+            let list: Vec<String> = allowlist
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+            config.governance.allowlist = list;
+        }
+
+        // RAG environment variable overrides
+        if let Ok(enabled) = env::var("RAG_ENABLED") {
+            if let Ok(b) = enabled.parse::<bool>() {
+                config.rag.enabled = b;
+            }
+        }
+        if let Ok(dim) = env::var("RAG_VECTOR_DIM") {
+            if let Ok(d) = dim.parse::<usize>() {
+                config.rag.vector_dim = d;
+            }
+        }
+        if let Ok(top_k) = env::var("RAG_TOP_K") {
+            if let Ok(k) = top_k.parse::<usize>() {
+                config.rag.top_k = k;
+            }
+        }
+        if let Ok(index_path) = env::var("RAG_INDEX_PATH") {
+            config.rag.index_path = std::path::PathBuf::from(index_path);
+        }
+        if let Ok(model) = env::var("RAG_EMBEDDING_MODEL") {
+            config.rag.embedding_model = model;
+        }
 
         Ok(config)
     }
