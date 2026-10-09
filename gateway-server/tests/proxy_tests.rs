@@ -253,3 +253,23 @@ async fn test_chat_completions_rejects_missing_content() {
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
+#[tokio::test]
+async fn test_rate_limit_blocks_21st_request() {
+    let app = setup_test_app();
+
+    let mut last_status = StatusCode::OK;
+
+    for _ in 0..21 {
+        let request = Request::builder()
+            .uri("/chat")
+            .method("POST")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"prompt":""}"#))
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+        last_status = response.status();
+    }
+
+    assert_eq!(last_status, StatusCode::TOO_MANY_REQUESTS);
+}
