@@ -177,4 +177,79 @@ async fn test_jailbreak_dan_mode_blocked() {
 
     assert_eq!(json["error"]["type"], "security_violation");
 }
+#[tokio::test]
+async fn test_chat_completions_rejects_empty_messages() {
+    let app = setup_test_app();
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": []
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_chat_completions_rejects_non_array_messages() {
+    let app = setup_test_app();
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": "hello"
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_chat_completions_rejects_missing_role() {
+    let app = setup_test_app();
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": [{"content": "Hello"}]
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_chat_completions_rejects_missing_content() {
+    let app = setup_test_app();
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": [{"role": "user"}]
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
 

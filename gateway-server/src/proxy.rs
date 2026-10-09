@@ -9,11 +9,12 @@ use axum::extract::State;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use axum::{Json, Router};
+use axum::{middleware, Json, Router};
 use futures_util::stream::StreamExt;
 use gateway_core::{GatewayMetrics, InjectionScanner, PiiScanner, SharedMetrics, SlidingWindowScanner, StreamDecision};
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
 
@@ -26,6 +27,7 @@ pub struct AppState {
     pub pii_scanner: Arc<PiiScanner>,
     pub rag_engine: Option<Arc<RagEngine>>,
     pub metrics: SharedMetrics,
+    pub rate_limit_requests: Arc<Mutex<VecDeque<Instant>>>,
 }
 
 impl AppState {
@@ -58,6 +60,7 @@ impl AppState {
             pii_scanner: Arc::new(PiiScanner::new()),
             rag_engine,
             metrics: Arc::new(GatewayMetrics::new()),
+            rate_limit_requests: Arc::new(Mutex::new(VecDeque::new())),
         })
     }
 }
@@ -88,12 +91,70 @@ pub struct HealthResponse {
 }
 
 /// Build the Axum router with all proxy routes.
+
+
+
+
+async fn rate_limit_middleware(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let now = Instant::now();
+
+    // Keep the mutex lock inside this block.
+    let allowed = {
+        let mut requests = match state.rate_limit_requests.lock() {
+            Ok(requests) => requests,
+            Err(_) => {
+                return GatewayError::Internal(
+                    "Rate limiter unavailable".to_string(),
+                )
+                .into_response();
+            }
+        };
+
+        // Remove requests older than 60 seconds.
+        while let Some(oldest) = requests.front() {
+            if now.duration_since(*oldest) >= Duration::from_secs(60) {
+                requests.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        // Allow at most 20 requests in the 60-second window.
+        if requests.len() >= 20 {
+            false
+        } else {
+            requests.push_back(now);
+            true
+        }
+    }; // The mutex lock is released here.
+
+    if !allowed {
+        return GatewayError::RateLimited.into_response();
+    }
+
+    next.run(request).await
+}
+
+
+
+
 pub fn create_router(state: AppState) -> Router {
+    let chat_routes: Router<AppState> = Router::new()
+        .route("/v1/chat/completions", post(chat_completions_handler))
+        .route("/chat", post(simple_chat_handler))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_middleware,
+        ));
+
     Router::new()
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
-        .route("/v1/chat/completions", post(chat_completions_handler))
-        .route("/chat", post(simple_chat_handler))
+        .merge(chat_routes)
         .with_state(state)
 }
 
@@ -262,11 +323,40 @@ async fn chat_completions_handler(
             .as_object_mut()
             .ok_or_else(|| GatewayError::BadRequest("Request body must be a JSON object".to_string()))?;
 
-        if !obj.contains_key("messages") {
-            return Err(GatewayError::BadRequest(
-                "Missing required field 'messages' in chat completion request".to_string(),
-            ));
-        }
+        let messages = obj
+    .get("messages")
+    .and_then(|value| value.as_array())
+    .filter(|messages| !messages.is_empty())
+    .ok_or_else(|| {
+        GatewayError::BadRequest(
+            "'messages' must be a non-empty array".to_string(),
+        )
+    })?;
+
+for (index, message) in messages.iter().enumerate() {
+    let valid_role = message
+        .get("role")
+        .and_then(|value| value.as_str())
+        .map(|role| {
+            matches!(
+                role,
+                "system" | "user" | "assistant" | "tool" | "developer"
+            )
+        })
+        .unwrap_or(false);
+
+    if !valid_role {
+        return Err(GatewayError::BadRequest(
+            format!("Message at index {} has an invalid or missing role", index),
+        ));
+    }
+
+    if message.get("content").is_none() {
+        return Err(GatewayError::BadRequest(
+            format!("Message at index {} is missing content", index),
+        ));
+    }
+}
 
         // Default to configured model if not specified
         if !obj.contains_key("model") || obj.get("model").and_then(|v| v.as_str()).map_or(false, str::is_empty) {

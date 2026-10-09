@@ -10,6 +10,9 @@ pub enum GatewayError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Too many requests")]
+    RateLimited,
+
     #[error("Upstream gateway timeout: {0}")]
     UpstreamTimeout(String),
 
@@ -48,6 +51,12 @@ impl IntoResponse for GatewayError {
                 StatusCode::BAD_REQUEST,
                 "invalid_request_error".to_string(),
                 msg,
+                None,
+            ),
+            GatewayError::RateLimited => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate_limit_error".to_string(),
+                "Too many requests. Please try again later.".to_string(),
                 None,
             ),
             GatewayError::UpstreamTimeout(msg) => (
