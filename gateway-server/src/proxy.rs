@@ -375,10 +375,24 @@ for (index, message) in messages.iter().enumerate() {
     audit.streaming = payload.get("stream").and_then(|v| v.as_bool()).unwrap_or(false);
 
     // 3. Inbound Security Inspection (Sub-Millisecond Guardrails)
-    if let Some(messages) = payload.get("messages").and_then(|m| m.as_array()) {
+    if let Some(messages) = payload.get_mut("messages").and_then(|m| m.as_array_mut()) {
         for msg in messages {
-            if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
-                let report = state.injection_scanner.scan(content);
+    if let Some(content) = msg.get("content").and_then(|c| c.as_str()).map(str::to_owned) {
+    let content = content;
+    let (redacted_content, findings, elapsed_us) =
+        state.pii_scanner.redact(&content);
+
+    if !findings.is_empty() {
+        warn!(
+            findings_count = findings.len(),
+            latency_us = elapsed_us,
+            request_id = %request_id,
+            "Inbound PII detected and redacted"
+        );
+        msg["content"] = serde_json::Value::String(redacted_content.clone());
+    }
+
+    let report = state.injection_scanner.scan(&content);
                 audit.scan_latency_us += report.latency_micros;
                 if let gateway_core::Verdict::Block { reason, category } = report.verdict {
                     warn!(
@@ -615,7 +629,18 @@ async fn simple_chat_handler(
     }
 
     // 4. RAG Pipeline: Retrieve relevant context and enrich prompt if enabled
-    let mut final_prompt = payload.prompt.clone();
+    let (sanitized_prompt, findings, elapsed_us) =
+    state.pii_scanner.redact(&payload.prompt);
+
+if !findings.is_empty() {
+    warn!(
+        findings_count = findings.len(),
+        latency_us = elapsed_us,
+        "Inbound PII detected and redacted"
+    );
+}
+
+let mut final_prompt = sanitized_prompt;
     if state.config.rag.enabled {
         state.config.governance.check_request(ThreatCategory::RagPipeline, "rag://internal")?;
 
