@@ -314,7 +314,20 @@ mod tests {
         assert_eq!(findings.len(), 1);
         assert!(elapsed > 0);
     }
+    #[test]
+fn test_multiple_email_redaction() {
+    let scanner = PiiScanner::new();
 
+    let input = "Contact john@company.org or jane@company.org";
+
+    let (redacted, findings, _) = scanner.redact(input);
+
+    assert_eq!(
+        redacted,
+        "Contact [REDACTED_EMAIL] or [REDACTED_EMAIL]"
+    );
+    assert_eq!(findings.len(), 2);
+    }
     #[test]
     fn test_phone_redaction() {
         let scanner = PiiScanner::new();
