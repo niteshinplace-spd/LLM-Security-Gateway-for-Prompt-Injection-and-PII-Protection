@@ -378,7 +378,6 @@ for (index, message) in messages.iter().enumerate() {
     if let Some(messages) = payload.get_mut("messages").and_then(|m| m.as_array_mut()) {
         for msg in messages {
     if let Some(content) = msg.get("content").and_then(|c| c.as_str()).map(str::to_owned) {
-    let content = content;
     let (redacted_content, findings, elapsed_us) =
         state.pii_scanner.redact(&content);
 
@@ -640,17 +639,17 @@ if !findings.is_empty() {
     );
 }
 
-let mut final_prompt = sanitized_prompt;
+let mut final_prompt = sanitized_prompt.clone();
     if state.config.rag.enabled {
         state.config.governance.check_request(ThreatCategory::RagPipeline, "rag://internal")?;
 
         if let Some(ref rag_engine) = state.rag_engine {
-            let context_chunks = rag_engine.search_text(&payload.prompt).await;
+            let context_chunks = rag_engine.search_text(&sanitized_prompt).await;
             if !context_chunks.is_empty() {
                 final_prompt = format!(
                     "Context:\n{}\n\nUser Question: {}",
                     context_chunks.join("\n---\n"),
-                    payload.prompt
+                    sanitized_prompt
                 );
             }
         }
@@ -727,10 +726,20 @@ let mut final_prompt = sanitized_prompt;
             "Redacted sensitive PII / secret leak in /chat response"
         );
     }
+    let mut sanitized_json = json_val.clone();
+
+if let Some(content) = sanitized_json
+    .get_mut("choices")
+    .and_then(|c| c.get_mut(0))
+    .and_then(|c0| c0.get_mut("message"))
+    .and_then(|m| m.get_mut("content"))
+{
+    *content = serde_json::Value::String(sanitized_response.clone());
+}
 
     Ok(Json(SimpleChatResponse {
         model,
         response: sanitized_response,
-        raw: json_val,
+        raw: sanitized_json,
     }))
 }
