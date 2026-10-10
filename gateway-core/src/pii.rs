@@ -81,7 +81,7 @@ impl PiiScanner {
         // 13 to 19 digits potentially separated by hyphens or spaces
         let credit_card_candidate_regex = Regex::new(r"\b(?:\d[ -]*?){13,19}\b")
             .expect("Failed to compile credit card candidate regex");
-        let openai_key_regex = Regex::new(r"\bsk(?:[-_](?:test|proj|live))?[-_][a-zA-Z0-9_-]{20,}\b")
+        let openai_key_regex = Regex::new(r"\bsk(?:[-_](?:test|proj|live))?[-_][a-zA-Z0-9_-]{8,}\b")
             .expect("Failed to compile OpenAI key regex");
 
         let aws_key_regex = Regex::new(r"\bAKIA[0-9A-Z]{16}\b")
@@ -389,7 +389,12 @@ fn test_multiple_email_redaction() {
         "Here is a test key: [REDACTED_API_KEY]"
         );
         assert_eq!(findings_test.len(), 1);
-    }
+        let short_test_key = "Short key: sk_test_4eGcVq3P4y2lG";
+        let (redacted_short, findings_short, _) = scanner.redact(short_test_key);
+
+        assert_eq!(redacted_short, "Short key: [REDACTED_API_KEY]");
+        assert_eq!(findings_short.len(), 1);
+        }
 
     #[test]
     fn test_block_secrets_verdict() {
