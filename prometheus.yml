@@ -6,4 +6,4 @@ scrape_configs:
   - job_name: "rustguard-gateway"
     metrics_path: "/metrics"
     static_configs:
-      - targets: ["rustguard:3000"]
+      - targets: ["rustguard:8080"]

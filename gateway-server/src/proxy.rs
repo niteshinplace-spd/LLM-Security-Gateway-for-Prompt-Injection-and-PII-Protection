@@ -378,8 +378,7 @@ for (index, message) in messages.iter().enumerate() {
     if let Some(messages) = payload.get_mut("messages").and_then(|m| m.as_array_mut()) {
         for msg in messages {
     if let Some(content) = msg.get("content").and_then(|c| c.as_str()).map(str::to_owned) {
-    let (redacted_content, findings, elapsed_us) =
-        state.pii_scanner.redact(&content);
+    let (redacted_content, findings, elapsed_us) =state.pii_scanner.redact(&content);
 
     if !findings.is_empty() {
         warn!(
@@ -725,6 +724,7 @@ let mut final_prompt = sanitized_prompt.clone();
             latency_us = elapsed_us,
             "Redacted sensitive PII / secret leak in /chat response"
         );
+        state.metrics.inc_pii_redaction();
     }
     let mut sanitized_json = json_val.clone();
 
