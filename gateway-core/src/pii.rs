@@ -328,15 +328,18 @@ fn test_multiple_email_redaction() {
     );
     assert_eq!(findings.len(), 2);
     }
+    
     #[test]
     fn test_phone_redaction() {
         let scanner = PiiScanner::new();
         let input = "Call support at 415-555-2671 or (800) 123-4567.";
         let (redacted, findings, _) = scanner.redact(input);
 
-        assert!(redacted.contains("[REDACTED_PHONE]"));
+        assert!(!redacted.contains("415-555-2671"));
+        assert!(!redacted.contains("(800) 123-4567"));
         assert_eq!(findings.len(), 2);
     }
+
 
     #[test]
     fn test_ssn_redaction() {
