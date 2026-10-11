@@ -72,8 +72,8 @@ impl PiiScanner {
         let email_regex = Regex::new(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
             .expect("Failed to compile email regex");
 
-        let phone_regex = Regex::new(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")
-            .expect("Failed to compile phone regex");
+        let phone_regex =Regex::new(r"(?x)(?:\+?91[-.\s]?)?[6-9]\d{4}[-.\s]?\d{5}|\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b")
+        .expect("Failed to compile phone regex");
 
         let ssn_regex = Regex::new(r"\b\d{3}-\d{2}-\d{4}\b")
             .expect("Failed to compile SSN regex");
@@ -338,6 +338,20 @@ fn test_multiple_email_redaction() {
         assert!(!redacted.contains("(800) 123-4567"));
         assert_eq!(findings.len(), 2);
     }
+    
+    #[test]
+    fn test_indian_phone_redaction() {
+        let scanner = PiiScanner::new();
+        let input = "Call me at +91 98765 43210.";
+        let (redacted, findings, _) = scanner.redact(input);
+
+        assert!(
+            !redacted.contains("98765 43210"),
+            "The Indian phone number should be redacted"
+        );
+        assert_eq!(findings.len(), 1);
+    }
+
 
 
     #[test]
