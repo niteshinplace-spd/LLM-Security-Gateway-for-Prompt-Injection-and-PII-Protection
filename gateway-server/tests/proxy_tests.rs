@@ -273,3 +273,57 @@ async fn test_rate_limit_blocks_21st_request() {
 
     assert_eq!(last_status, StatusCode::TOO_MANY_REQUESTS);
 }
+
+async fn fake_upstream() -> axum::Json<serde_json::Value> {
+    axum::Json(serde_json::json!({
+        "choices": [{
+            "message": {
+                "role": "assistant",
+                "content": "Here is a key: sk_test_4eGcVq3P4y2lG"
+            }
+        }]
+    }))
+}
+
+#[tokio::test]
+async fn test_chat_redacts_api_key_in_upstream_response() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+
+    let upstream_app = axum::Router::new().route(
+        "/v1/chat/completions",
+        axum::routing::post(fake_upstream),
+    );
+
+    tokio::spawn(async move {
+        axum::serve(listener, upstream_app).await.unwrap();
+    });
+
+    let mut config = AppConfig::default();
+    config.governance.default_deny = false;
+    config.upstream.base_url = format!("http://{}", address);
+
+    let state = AppState::new(config).unwrap();
+    let app = create_router(state);
+
+    let request = Request::builder()
+        .uri("/chat")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"prompt":"Tell me something harmless."}"#))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(json["response"], "Here is a key: [REDACTED_API_KEY]");
+    assert_eq!(
+        json["raw"]["choices"][0]["message"]["content"],
+        "Here is a key: [REDACTED_API_KEY]"
+    );
+}
