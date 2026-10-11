@@ -327,3 +327,76 @@ async fn test_chat_redacts_api_key_in_upstream_response() {
         "Here is a key: [REDACTED_API_KEY]"
     );
 }
+
+#[tokio::test]
+async fn test_chat_redacts_api_key_in_user_prompt() {
+    use std::sync::{Arc, Mutex};
+
+    let received_prompt = Arc::new(Mutex::new(String::new()));
+    let received_prompt_clone = Arc::clone(&received_prompt);
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+
+    let upstream_app = axum::Router::new().route(
+        "/v1/chat/completions",
+        axum::routing::post(move |body: axum::Json<serde_json::Value>| {
+            let received_prompt = Arc::clone(&received_prompt_clone);
+
+            async move {
+                let prompt = body["messages"][0]["content"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string();
+
+                *received_prompt.lock().unwrap() = prompt;
+
+                axum::Json(serde_json::json!({
+                    "choices": [{
+                        "message": {
+                            "role": "assistant",
+                            "content": "I received your message."
+                        }
+                    }]
+                }))
+            }
+        }),
+    );
+
+    tokio::spawn(async move {
+        axum::serve(listener, upstream_app).await.unwrap();
+    });
+
+    let mut config = AppConfig::default();
+    config.governance.default_deny = false;
+    config.upstream.base_url = format!("http://{}", address);
+
+    let state = AppState::new(config).unwrap();
+    let app = create_router(state);
+
+    let request = Request::builder()
+        .uri("/chat")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(
+            r#"{"prompt":"My key is sk_test_4eGcVq3P4y2lG"}"#,
+        ))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let prompt_sent_upstream = received_prompt.lock().unwrap().clone();
+
+    assert!(
+        !prompt_sent_upstream.contains("sk_test_4eGcVq3P4y2lG"),
+        "The original API key must not reach the upstream server"
+    );
+
+    assert!(
+        prompt_sent_upstream.contains("[REDACTED_API_KEY]"),
+        "The upstream prompt should contain the redacted key"
+    );
+}
