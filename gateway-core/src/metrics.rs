@@ -19,6 +19,8 @@ pub struct GatewayMetrics {
     pub policy_blocks_total: AtomicU64,
     /// PII / secret redactions applied to outbound responses.
     pub pii_redactions_total: AtomicU64,
+    /// PII / secret redactions applied to incoming requests.
+    pub inbound_pii_redactions_total: AtomicU64,
     /// Streaming responses that were killed mid-stream by the security scanner.
     pub stream_kills_total: AtomicU64,
     /// RAG context retrievals performed.
@@ -43,6 +45,7 @@ impl GatewayMetrics {
             injection_blocks_total: AtomicU64::new(0),
             policy_blocks_total: AtomicU64::new(0),
             pii_redactions_total: AtomicU64::new(0),
+            inbound_pii_redactions_total: AtomicU64::new(0),
             stream_kills_total: AtomicU64::new(0),
             rag_retrievals_total: AtomicU64::new(0),
             upstream_latency_us_total: AtomicU64::new(0),
@@ -70,6 +73,10 @@ impl GatewayMetrics {
     #[inline]
     pub fn inc_pii_redaction(&self) {
         self.pii_redactions_total.fetch_add(1, Ordering::Relaxed);
+    }
+    #[inline]
+    pub fn inc_inbound_pii_redaction(&self) {
+    self.inbound_pii_redactions_total.fetch_add(1, Ordering::Relaxed);
     }
 
     #[inline]
@@ -108,6 +115,7 @@ impl GatewayMetrics {
         let inj_blocks = self.injection_blocks_total.load(Ordering::Relaxed);
         let pol_blocks = self.policy_blocks_total.load(Ordering::Relaxed);
         let pii = self.pii_redactions_total.load(Ordering::Relaxed);
+        let inbound_pii = self.inbound_pii_redactions_total.load(Ordering::Relaxed);
         let stream_kills = self.stream_kills_total.load(Ordering::Relaxed);
         let rag = self.rag_retrievals_total.load(Ordering::Relaxed);
         let mean_lat = self.mean_upstream_latency_us();
@@ -136,6 +144,7 @@ impl GatewayMetrics {
         prom_counter!(out, "gateway_injection_blocks_total", "Requests blocked by prompt injection scanner.", inj_blocks);
         prom_counter!(out, "gateway_policy_blocks_total", "Requests blocked by auth or governance policy.", pol_blocks);
         prom_counter!(out, "gateway_pii_redactions_total", "PII/secret redactions applied to responses.", pii);
+        prom_counter!(out, "gateway_inbound_pii_redactions_total", "PII/secret redactions applied to incoming requests.", inbound_pii);
         prom_counter!(out, "gateway_stream_kills_total", "SSE streams killed mid-flight by security scanner.", stream_kills);
         prom_counter!(out, "gateway_rag_retrievals_total", "RAG context retrievals performed.", rag);
         prom_gauge!(out, "gateway_upstream_latency_mean_us", "Mean upstream round-trip latency in microseconds.", mean_lat);

@@ -382,6 +382,8 @@ for (index, message) in messages.iter().enumerate() {
             state.pii_scanner.redact(&content);
 
     if !findings.is_empty() {
+        state.metrics.inc_inbound_pii_redaction();
+        
         warn!(
             findings_count = findings.len(),
             latency_us = elapsed_us,
@@ -632,12 +634,14 @@ async fn simple_chat_handler(
     state.pii_scanner.redact(&payload.prompt);
 
 if !findings.is_empty() {
+    state.metrics.inc_inbound_pii_redaction();
+    
     warn!(
         findings_count = findings.len(),
         latency_us = elapsed_us,
         "Inbound PII detected and redacted"
     );
-}
+    }
 
 let mut final_prompt = sanitized_prompt.clone();
     if state.config.rag.enabled {
