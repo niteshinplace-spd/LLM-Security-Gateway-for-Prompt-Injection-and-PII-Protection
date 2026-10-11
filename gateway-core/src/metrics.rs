@@ -189,19 +189,26 @@ mod tests {
         assert_eq!(m.mean_upstream_latency_us(), 300);
     }
 
+    
     #[test]
     fn test_prometheus_text_contains_all_metrics() {
         let m = GatewayMetrics::new();
+
         m.inc_requests();
         m.inc_pii_redaction();
+        m.inc_inbound_pii_redaction();
         m.inc_stream_kill();
+
         let text = m.prometheus_text();
+
         assert!(text.contains("gateway_requests_total 1"));
         assert!(text.contains("gateway_pii_redactions_total 1"));
+        assert!(text.contains("gateway_inbound_pii_redactions_total 1"));
         assert!(text.contains("gateway_stream_kills_total 1"));
         assert!(text.contains("# TYPE gateway_requests_total counter"));
         assert!(text.contains("# TYPE gateway_upstream_latency_mean_us gauge"));
     }
+
 
     #[test]
     fn test_metrics_arc_shared_across_threads() {
