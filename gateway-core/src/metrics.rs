@@ -175,8 +175,10 @@ mod tests {
         m.inc_requests();
         m.inc_requests();
         m.inc_injection_block();
+        m.inc_inbound_pii_redaction();
         assert_eq!(m.requests_total.load(Ordering::Relaxed), 2);
         assert_eq!(m.injection_blocks_total.load(Ordering::Relaxed), 1);
+        assert_eq!(m.inbound_pii_redactions_total.load(Ordering::Relaxed), 1);
     }
 
     #[test]
