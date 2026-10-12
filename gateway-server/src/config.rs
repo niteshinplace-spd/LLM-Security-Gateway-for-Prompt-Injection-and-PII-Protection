@@ -68,6 +68,7 @@ pub struct SecurityConfig {
     pub block_secrets: bool,
     pub require_auth: bool,
     pub auth_token: Option<String>,
+    pub allowed_tools: Vec<String>,
 }
 
 impl Default for SecurityConfig {
@@ -78,6 +79,7 @@ impl Default for SecurityConfig {
             block_secrets: false,
             require_auth: false,
             auth_token: None,
+            allowed_tools: Vec::new(),
         }
     }
 }
@@ -257,6 +259,14 @@ impl AppConfig {
                 .filter(|s| !s.is_empty())
                 .collect();
             config.governance.allowlist = list;
+        }
+
+        if let Ok(allowed_tools) = env::var("ALLOWED_TOOLS") {
+            config.security.allowed_tools = allowed_tools
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
         }
 
         // RAG environment variable overrides

@@ -400,3 +400,99 @@ async fn test_chat_redacts_api_key_in_user_prompt() {
         "The upstream prompt should contain the redacted key"
     );
 }
+
+
+#[tokio::test]
+async fn test_unapproved_tool_is_rejected() {
+    let app = setup_test_app();
+
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": [
+            {"role": "user", "content": "Please help me."}
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "delete_files",
+                    "description": "Delete files",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            }
+        ]
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_tools_must_be_an_array() {
+    let app = setup_test_app();
+
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": [
+            {"role": "user", "content": "Please help me."}
+        ],
+        "tools": "delete_files"
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_unsupported_tool_type_is_rejected() {
+    let app = setup_test_app();
+
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": [
+            {"role": "user", "content": "Please help me."}
+        ],
+        "tools": [
+            {
+                "type": "unsupported",
+                "function": {
+                    "name": "some_tool",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            }
+        ]
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}

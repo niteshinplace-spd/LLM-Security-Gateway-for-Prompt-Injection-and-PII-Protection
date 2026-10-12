@@ -317,6 +317,54 @@ async fn chat_completions_handler(
         audit.emit();
         return Err(e);
     }
+    // 3. Tool security: allow only approved tool names
+    if let Some(tools) = payload.get("tools") {
+        let tools = tools.as_array().ok_or_else(|| {
+            GatewayError::BadRequest(
+                "'tools' must be an array".to_string(),
+            )
+        })?;
+
+        for tool in tools {
+            if tool.get("type").and_then(|value| value.as_str()) != Some("function") {
+                return Err(GatewayError::BadRequest(
+                    "Each tool must have type 'function'".to_string(),
+                ));
+            }
+
+            let name = tool
+                .get("function")
+                .and_then(|function| function.get("name"))
+                .and_then(|name| name.as_str())
+                .ok_or_else(|| {
+                    GatewayError::BadRequest(
+                        "Each tool must have a function name".to_string(),
+                    )
+                })?;
+
+            if !state
+                .config
+                .security
+                .allowed_tools
+                .iter()
+                .any(|allowed| allowed == name)
+            {
+                state.metrics.inc_policy_block();
+                audit.outcome = RequestOutcome::BlockedPolicy;
+                audit.block_reason =
+                    Some(format!("Tool '{}' is not allowed", name));
+                audit.emit();
+
+                return Err(GatewayError::SecurityBlocked {
+                    reason: format!(
+                        "Tool '{}' is not in the allowed tools list",
+                        name
+                    ),
+                    category: "ToolExecution".to_string(),
+                });
+            }
+        }
+    }
 
     let model_name = {
         let obj = payload
