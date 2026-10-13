@@ -8,6 +8,7 @@ use tower::ServiceExt;
 fn setup_test_app() -> axum::Router {
     let mut config = AppConfig::default();
     config.governance.default_deny = false;
+    config.security.allowed_tools = vec!["search_web".to_string()];
     let state = AppState::new(config).expect("Failed to initialize AppState");
     create_router(state)
 }
@@ -493,4 +494,40 @@ async fn test_unsupported_tool_type_is_rejected() {
     let response = app.oneshot(request).await.unwrap();
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_approved_tool_passes_allowlist_check() {
+    let app = setup_test_app();
+
+    let payload = serde_json::json!({
+        "model": "llama3.2:3b",
+        "messages": [
+            {"role": "user", "content": "Search for Rust documentation."}
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_web",
+                    "description": "Search the web",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            }
+        ]
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_ne!(response.status(), StatusCode::FORBIDDEN);
 }
