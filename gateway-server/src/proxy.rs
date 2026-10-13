@@ -159,24 +159,32 @@ pub fn create_router(state: AppState) -> Router {
 }
 
 /// GET /health
-async fn health_handler(State(state): State<AppState>) -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        upstream_url: state.config.upstream_chat_url(),
-        default_model: state.config.upstream.default_model.clone(),
-        version: env!("CARGO_PKG_VERSION"),
-    })
+async fn health_handler() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "status": "ok"
+    }))
 }
 
 /// GET /metrics — Prometheus text-format exposition of all gateway counters.
-async fn metrics_handler(State(state): State<AppState>) -> impl IntoResponse {
+
+async fn metrics_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if let Err(error) = state.config.security.enforce_auth(&headers) {
+        state.metrics.inc_policy_block();
+        return error.into_response();
+    }
+
     let body = state.metrics.prometheus_text();
     (
         StatusCode::OK,
         [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
         body,
     )
+        .into_response()
 }
+
 
 /// Wraps an upstream byte stream in a real-time sliding-window security scanner.
 ///
@@ -678,18 +686,42 @@ async fn simple_chat_handler(
     }
 
     // 4. RAG Pipeline: Retrieve relevant context and enrich prompt if enabled
-    let (sanitized_prompt, findings, elapsed_us) =
-    state.pii_scanner.redact(&payload.prompt);
+    let (verdict, elapsed_us) = state
+        .pii_scanner
+        .scan_and_verdict(&payload.prompt, state.config.security.block_secrets);
 
-if !findings.is_empty() {
-    state.metrics.inc_inbound_pii_redaction();
-    
-    warn!(
-        findings_count = findings.len(),
-        latency_us = elapsed_us,
-        "Inbound PII detected and redacted"
-    );
-    }
+    let sanitized_prompt = match verdict {
+        gateway_core::Verdict::Allow => payload.prompt.clone(),
+
+        gateway_core::Verdict::Redact {
+            redactions_count,
+            redacted_text,
+        } => {
+            state.metrics.inc_inbound_pii_redaction();
+
+            warn!(
+                findings_count = redactions_count,
+                latency_us = elapsed_us,
+                "Inbound PII detected and redacted"
+            );
+
+            redacted_text
+        }
+
+        gateway_core::Verdict::Block { reason, category } => {
+            warn!(
+                reason = %reason,
+                category = ?category,
+                latency_us = elapsed_us,
+                "Inbound secret blocked"
+            );
+
+            return Err(GatewayError::SecurityBlocked {
+                reason,
+                category: format!("{:?}", category),
+            });
+        }
+    };
 
 let mut final_prompt = sanitized_prompt.clone();
     if state.config.rag.enabled {

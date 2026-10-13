@@ -29,7 +29,9 @@ async fn test_health_endpoint() {
     let json: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(json["status"], "ok");
-    assert_eq!(json["default_model"], "llama3.2:3b");
+    assert!(json.get("upstream_url").is_none());
+    assert!(json.get("default_model").is_none());
+    assert!(json.get("version").is_none());
 }
 
 #[tokio::test]
@@ -386,20 +388,16 @@ async fn test_chat_redacts_api_key_in_user_prompt() {
         .unwrap();
 
     let response = app.oneshot(request).await.unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 
     let prompt_sent_upstream = received_prompt.lock().unwrap().clone();
 
     assert!(
-        !prompt_sent_upstream.contains("sk_test_4eGcVq3P4y2lG"),
-        "The original API key must not reach the upstream server"
+        prompt_sent_upstream.is_empty(),
+        "The request containing a secret must not reach the upstream server"
     );
-
-    assert!(
-        prompt_sent_upstream.contains("[REDACTED_API_KEY]"),
-        "The upstream prompt should contain the redacted key"
-    );
-}
+    }
 
 
 #[tokio::test]

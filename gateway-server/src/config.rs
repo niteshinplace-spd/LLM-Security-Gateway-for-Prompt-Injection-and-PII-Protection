@@ -76,7 +76,7 @@ impl Default for SecurityConfig {
         Self {
             allow_localhost: true,
             block_cloud_metadata: true,
-            block_secrets: false,
+            block_secrets: true,
             require_auth: false,
             auth_token: None,
             allowed_tools: Vec::new(),
@@ -232,6 +232,12 @@ impl AppConfig {
         if let Ok(block_meta) = env::var("BLOCK_CLOUD_METADATA") {
             if let Ok(b) = block_meta.parse::<bool>() {
                 config.security.block_cloud_metadata = b;
+            }
+        }
+
+        if let Ok(block_secrets) = env::var("BLOCK_SECRETS") {
+            if let Ok(b) = block_secrets.parse::<bool>() {
+                config.security.block_secrets = b;
             }
         }
 

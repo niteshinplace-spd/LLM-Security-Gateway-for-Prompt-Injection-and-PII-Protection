@@ -14,7 +14,9 @@ services:
       - GATEWAY_PORT=8080
       - UPSTREAM_BASE_URL=http://host.docker.internal:11434
       - DEFAULT_MODEL=llama3.2:1b
-      - REQUIRE_AUTH=false
+      - BLOCK_SECRETS=true
+      - REQUIRE_AUTH=true
+      - AUTH_TOKEN=${AUTH_TOKEN}
       - GOVERNANCE_DEFAULT_DENY=false
       - RAG_ENABLED=false
       - RUST_LOG=info
@@ -35,6 +37,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./.prometheus-auth-token:/etc/prometheus/auth_token:ro
     depends_on:
       - rustguard
     networks:
