@@ -15,6 +15,7 @@ services:
       - UPSTREAM_BASE_URL=http://host.docker.internal:11434
       - DEFAULT_MODEL=llama3.2:1b
       - BLOCK_SECRETS=true
+      - ALLOWED_TOOLS=search_web
       - REQUIRE_AUTH=true
       - AUTH_TOKEN=${AUTH_TOKEN}
       - GOVERNANCE_DEFAULT_DENY=false
