@@ -568,3 +568,45 @@ async fn test_approved_tool_passes_allowlist_check() {
         "Tool approved"
     );
 }
+
+
+#[tokio::test]
+async fn test_empty_allowlist_rejects_tools() {
+    let mut config = AppConfig::default();
+    config.governance.default_deny = false;
+    config.security.allowed_tools = vec![];
+
+    let state = AppState::new(config).unwrap();
+    let app = create_router(state);
+
+    let payload = serde_json::json!({
+        "model": "llama3.2:1b",
+        "messages": [
+            {"role": "user", "content": "Please help me."}
+        ],
+        "tools": [
+            {
+                "type": "function",
+                "function": {
+                    "name": "search_web",
+                    "description": "Search the web",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {}
+                    }
+                }
+            }
+        ]
+    });
+
+    let request = Request::builder()
+        .uri("/v1/chat/completions")
+        .method("POST")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(payload.to_string()))
+        .unwrap();
+
+    let response = app.oneshot(request).await.unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
