@@ -498,7 +498,36 @@ async fn test_unsupported_tool_type_is_rejected() {
 
 #[tokio::test]
 async fn test_approved_tool_passes_allowlist_check() {
-    let app = setup_test_app();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .unwrap();
+    let address = listener.local_addr().unwrap();
+
+    let upstream_app = axum::Router::new().route(
+        "/v1/chat/completions",
+        axum::routing::post(|| async {
+            axum::Json(serde_json::json!({
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": "Tool approved"
+                    }
+                }]
+            }))
+        }),
+    );
+
+    tokio::spawn(async move {
+        axum::serve(listener, upstream_app).await.unwrap();
+    });
+
+    let mut config = AppConfig::default();
+    config.governance.default_deny = false;
+    config.security.allowed_tools = vec!["search_web".to_string()];
+    config.upstream.base_url = format!("http://{}", address);
+
+    let state = AppState::new(config).unwrap();
+    let app = create_router(state);
 
     let payload = serde_json::json!({
         "model": "llama3.2:3b",
@@ -529,5 +558,13 @@ async fn test_approved_tool_passes_allowlist_check() {
 
     let response = app.oneshot(request).await.unwrap();
 
-    assert_ne!(response.status(), StatusCode::FORBIDDEN);
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(
+        json["choices"][0]["message"]["content"],
+        "Tool approved"
+    );
 }
